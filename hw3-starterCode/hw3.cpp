@@ -48,7 +48,7 @@ int mode = MODE_DISPLAY;
 // However, for your own purposes, after you have solved the homework, you can increase those values to obtain higher-resolution images.
 #define WIDTH 640
 #define HEIGHT 480
-#define SUPERSAMPLING_FACTOR 4
+#define SUPERSAMPLING_FACTOR 2
 #define WIDTH_SUPERSAMPLING (WIDTH * SUPERSAMPLING_FACTOR)
 #define HEIGHT_SUPERSAMPLING (HEIGHT * SUPERSAMPLING_FACTOR)
 // The field of view of the camera, in degrees.
@@ -606,15 +606,14 @@ void compute_phong_color(TracedRay& ray, unsigned char& r, unsigned char& g, uns
   b = (unsigned char)(final_color[2] * 255);
 }
 
-void draw_scene()
-{
+// takes all (supersampled) traced rays, does lighting calculations
+// on them, averages them based on the supersample factor, 
+// and fills in buffer with the color data of each pixel.
+void gen_buffer_from_traced_rays() {
   for(unsigned int x = 0; x < WIDTH; x++)
   {
-    glPointSize(2.0);  
-    glBegin(GL_POINTS);
     for(unsigned int y = 0; y < HEIGHT; y++)
     {
-      // supersampling anti-aliasing
       unsigned int r = 0, g = 0, b = 0;
       for (int i = 0; i < SUPERSAMPLING_FACTOR; ++i) {
         for (int j = 0; j < SUPERSAMPLING_FACTOR; ++j) {
@@ -629,7 +628,24 @@ void draw_scene()
       unsigned char avg_r = static_cast<unsigned char>(r / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
       unsigned char avg_g = static_cast<unsigned char>(g / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
       unsigned char avg_b = static_cast<unsigned char>(b / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
-      plot_pixel(x, y, avg_r, avg_g, avg_b);
+      buffer[x][y][0] = avg_r;
+      buffer[x][y][1] = avg_g;
+      buffer[x][y][2] = avg_b;
+    }
+  }
+}
+
+void draw_scene()
+{
+  // supersampled image to WIDTH x HEIGHT sized image
+  gen_buffer_from_traced_rays();
+  for(unsigned int x = 0; x < WIDTH; x++)
+  {
+    glPointSize(2.0);  
+    glBegin(GL_POINTS);
+    for(unsigned int y = 0; y < HEIGHT; y++)
+    {
+      plot_pixel(x, y, buffer[x][y][0], buffer[x][y][1], buffer[x][y][2]);
     }
     glEnd();
     glFlush();
@@ -661,7 +677,6 @@ void plot_pixel(int x, int y, unsigned char r, unsigned char g, unsigned char b)
 void save_jpg()
 {
   printf("Saving JPEG file: %s\n", filename);
-
   ImageIO img(WIDTH, HEIGHT, 3, &buffer[0][0][0]);
   if (img.save(filename, ImageIO::FORMAT_JPEG) != ImageIO::OK)
     printf("Error in saving\n");
