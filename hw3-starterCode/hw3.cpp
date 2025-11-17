@@ -505,35 +505,33 @@ void compute_phong_color(TracedRay& ray, unsigned char& r, unsigned char& g, uns
   // triangle surface properties case
   else if (ray.object_type == TRIANGLE) {
     int idx = ray.object_idx;
-    Triangle& tri = triangles[idx];
-
-    tri.get_triangle_normal(normal);
+    triangles[idx].get_triangle_normal(normal);
 
     // get barycentric coordinates
     double A[2], B[2], C[2], P[2];
-    tri.project_2d(normal, ray.intersection_point, A, B, C, P);
+    triangles[idx].project_2d(normal, ray.intersection_point, A, B, C, P);
     double alpha, beta, gamma;
-    tri.barycentric(A, B, C, P, alpha, beta, gamma);
+    triangles[idx].barycentric(A, B, C, P, alpha, beta, gamma);
 
     // diffuse interpolation
-    kd[0] = alpha * tri.v[0].color_diffuse[0] + beta
-      * tri.v[1].color_diffuse[0] + gamma * tri.v[2].color_diffuse[0];
-    kd[1] = alpha * tri.v[0].color_diffuse[1] + beta
-      * tri.v[1].color_diffuse[1] + gamma * tri.v[2].color_diffuse[1];
-    kd[2] = alpha * tri.v[0].color_diffuse[2] + beta
-      * tri.v[1].color_diffuse[2] + gamma * tri.v[2].color_diffuse[2];
+    kd[0] = alpha * triangles[idx].v[0].color_diffuse[0] + beta
+      * triangles[idx].v[1].color_diffuse[0] + gamma * triangles[idx].v[2].color_diffuse[0];
+    kd[1] = alpha * triangles[idx].v[0].color_diffuse[1] + beta
+      * triangles[idx].v[1].color_diffuse[1] + gamma * triangles[idx].v[2].color_diffuse[1];
+    kd[2] = alpha * triangles[idx].v[0].color_diffuse[2] + beta
+      * triangles[idx].v[1].color_diffuse[2] + gamma * triangles[idx].v[2].color_diffuse[2];
 
     // specular interpolation
-    ks[0] = alpha * tri.v[0].color_specular[0] + beta
-      * tri.v[1].color_specular[0] + gamma * tri.v[2].color_specular[0];
-    ks[1] = alpha * tri.v[0].color_specular[1] + beta
-      * tri.v[1].color_specular[1] + gamma * tri.v[2].color_specular[1];
-    ks[2] = alpha * tri.v[0].color_specular[2] + beta
-      * tri.v[1].color_specular[2] + gamma * tri.v[2].color_specular[2];
+    ks[0] = alpha * triangles[idx].v[0].color_specular[0] + beta
+      * triangles[idx].v[1].color_specular[0] + gamma * triangles[idx].v[2].color_specular[0];
+    ks[1] = alpha * triangles[idx].v[0].color_specular[1] + beta
+      * triangles[idx].v[1].color_specular[1] + gamma * triangles[idx].v[2].color_specular[1];
+    ks[2] = alpha * triangles[idx].v[0].color_specular[2] + beta
+      * triangles[idx].v[1].color_specular[2] + gamma * triangles[idx].v[2].color_specular[2];
 
     // shininess interpolation
-    shininess = alpha * tri.v[0].shininess + beta
-      * tri.v[1].shininess + gamma * tri.v[2].shininess;
+    shininess = alpha * triangles[idx].v[0].shininess + beta
+      * triangles[idx].v[1].shininess + gamma * triangles[idx].v[2].shininess;
   }
 
   // final color (populated by phong shading)
