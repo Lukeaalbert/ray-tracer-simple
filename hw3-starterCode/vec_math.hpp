@@ -66,6 +66,24 @@ void subtract(const double a[3], const double b[3], double out[3]) {
   out[2] = a[2] - b[2];
 }
 
+void add(const double a[3], const double b[3], double out[3]) {
+  out[0] = a[0] + b[0];
+  out[1] = a[1] + b[1];
+  out[2] = a[2] + b[2];
+}
+
+void add(const double a[3], const double scalar, double out[3]) {
+  out[0] = a[0] + scalar;
+  out[1] = a[1] + scalar;
+  out[2] = a[2] + scalar;
+}
+
+void divide(const double a[3], const double scalar, double out[3]) {
+  out[0] = a[0] / scalar;
+  out[1] = a[1] / scalar;
+  out[2] = a[2] / scalar;
+}
+
 double dist(const double a[3], const double b[3]) {
     double res[3];
     subtract(b, a, res);

@@ -67,6 +67,140 @@ struct Vertex
 struct Triangle
 {
   Vertex v[3];
+
+void project_2d(const double triangle_normal[3],
+  const double project_point_3d[3], double a_projected[2],
+  double b_projected[2], double c_projected[2],
+  double p_projected[2])
+  {
+    // pick projection axis based on the largest component of normal
+    double normal_x = fabs(triangle_normal[0]);
+    double normal_y = fabs(triangle_normal[1]);
+    double normal_z = fabs(triangle_normal[2]);
+
+    // kill x
+    if (normal_x > normal_y && normal_x > normal_z) {
+        a_projected[0] = v[0].position[1];
+        a_projected[1] = v[0].position[2];
+        b_projected[0] = v[1].position[1];
+        b_projected[1] = v[1].position[2];
+        c_projected[0] = v[2].position[1];
+        c_projected[1] = v[2].position[2];
+        p_projected[0] = project_point_3d[1];
+        p_projected[1] = project_point_3d[2];
+    }
+    // kill y
+    else if (normal_y > normal_z) {
+        a_projected[0] = v[0].position[0];
+        a_projected[1] = v[0].position[2];
+        b_projected[0] = v[1].position[0];
+        b_projected[1] = v[1].position[2];
+        c_projected[0] = v[2].position[0];
+        c_projected[1] = v[2].position[2];
+        p_projected[0] = project_point_3d[0];
+        p_projected[1] = project_point_3d[2];
+    }
+    // kill z
+    else {
+        a_projected[0] = v[0].position[0];
+        a_projected[1] = v[0].position[1];
+        b_projected[0] = v[1].position[0];
+        b_projected[1] = v[1].position[1];
+        c_projected[0] = v[2].position[0];
+        c_projected[1] = v[2].position[1];
+        p_projected[0] = project_point_3d[0];
+        p_projected[1] = project_point_3d[1];
+    }
+  }
+
+  void barycentric(const double A[2], const double B[2], const double C[2],
+    const double P[2], double& alpha, double& beta, double& gamma) {
+    double v0[2], v1[2], v2[2];
+    v0[0] = B[0] - A[0]; 
+    v0[1] = B[1] - A[1];
+    v1[0] = C[0] - A[0]; 
+    v1[1] = C[1] - A[1];
+    v2[0] = P[0] - A[0]; 
+    v2[1] = P[1] - A[1];
+
+    double d00 = v0[0] * v0[0] + v0[1] * v0[1];
+    double d01 = v0[0] * v1[0] + v0[1] * v1[1];
+    double d11 = v1[0] * v1[0] + v1[1] * v1[1];
+    double d20 = v2[0] * v0[0] + v2[1] * v0[1];
+    double d21 = v2[0] * v1[0] + v2[1] * v1[1];
+
+    double denom = d00 * d11 - d01 * d01;
+    beta  = (d11 * d20 - d01 * d21) / denom;
+    gamma = (d00 * d21 - d01 * d20) / denom;
+    alpha = 1.0 - beta - gamma;
+  }
+
+  // t is the distance from the ray origin to intersection point
+  bool intersect(const double ray_origin[3], const double ray_direction[3], double& t)
+  {
+    // triangle normal
+    double n[3];
+    get_triangle_normal(n);
+
+    // ray is parallel to plane formed by triangle vertices
+    if (dot(n, ray_direction) == 0) {
+      return false;
+    }
+
+    // solve for t = −[ (n dot p0 + −n dot A) / (n dot direction) ]
+    {
+      // numerator
+      double numerator = -dot(n, v[0].position) + dot(n, ray_origin);
+      // denominator
+      double denominator = dot(n, ray_direction);
+      t = -(numerator/denominator);
+    }
+
+    // intersection is behind ray
+    if (t <= 0) {
+      return false;
+    }
+
+    // at this point, we have a valid ray PLANE intersection
+    // for the plane formed by the 3 points of the triangle.
+    // now we have to use barycentric coordinates to make sure
+    // that the intersetion point is actually inside the triangle.
+
+    // finding intersection point
+    double intersection_point[3];
+    double ray_direction_scaled[3];
+    deep_copy(ray_direction_scaled, ray_direction);
+    scale(ray_direction_scaled, t);
+    add(ray_origin, ray_direction_scaled, intersection_point);
+
+    // we want to flatten an axis to preform barycentric coordinate
+    // calculations. we have to do this dynamically though, to make sure
+    // the triangle isn't perpendicular to the axis. we'll try the z-axis
+    // first and waterfall to the y-axis as needed.
+
+    // project 2-d
+    double A[2], B[2], C[2], P[2];
+    project_2d(n, intersection_point, A, B, C, P);
+    double alpha, beta, gamma;
+    barycentric(A, B, C, P, alpha, beta, gamma);
+
+    // p inside triangle iff 0 ≤ α, β, γ ≤ 1, α + β + γ = 1 
+    return (0 <= alpha && alpha <= 1)
+      && (0 <= beta && beta <= 1)
+      && (0 <= gamma && gamma <= 1)
+      && (abs(alpha + beta + gamma - 1) < 1e-6);
+  }
+
+  void get_triangle_normal(double normal[3]) {
+    // n = (B−A)×(C−A)
+    // where A, B, and C are triangle vertices
+    double b_sub_a[3];
+    subtract(v[1].position, v[0].position, b_sub_a);
+    double c_sub_a[3];
+    subtract(v[2].position, v[0].position, c_sub_a);
+    cross(b_sub_a, c_sub_a, normal);
+    normalize(normal);
+  }
 };
 
 struct Sphere
@@ -196,7 +330,7 @@ void compute_unit_rays() {
     for (double y=0.0f; y<HEIGHT; y += 1.0f)
     {
       // -1 to 1
-      double v = -((y + 0.5) / HEIGHT) * 2 + 1;
+      double v = ((y + 0.5) / HEIGHT) * 2 - 1;
       // y coordinate for point on image plane 
       double py = v * (image_plane_height/2);
       // y coordinate for point on image plane (constant -1)
@@ -243,7 +377,14 @@ void cast_primary_rays() {
         }
         // triangle intersection
         if (idx < num_triangles) {
-          // TODO
+          double t;
+          if (triangles[idx].intersect(origin, curr_ray, t)) {
+            if (t < closest_t) {
+              closest_t = t;
+              closest_object_type = TRIANGLE;
+              closest_obj_idx = idx;
+            }
+          }
         }
         // light intersection
         if (idx < num_lights) {
@@ -312,7 +453,13 @@ void cast_shadow_rays() {
           for (int idx = 0; idx < num_triangles; idx++) {
             if (idx == traced_rays[x][y].object_idx
               && traced_rays[x][y].object_type == TRIANGLE) continue;
-            // TODO: triangle intersection
+              double t;
+              if (triangles[idx].intersect(traced_rays[x][y].intersection_point, intersection_to_curr_light, t)) {
+                if (t > 0 && t < distance_to_light) {
+                intersection_found = true;
+                break;
+              }
+            }
           }
         }
         
@@ -357,7 +504,36 @@ void compute_phong_color(TracedRay& ray, unsigned char& r, unsigned char& g, uns
   }
   // triangle surface properties case
   else if (ray.object_type == TRIANGLE) {
-    // TODO
+    int idx = ray.object_idx;
+    Triangle& tri = triangles[idx];
+
+    tri.get_triangle_normal(normal);
+
+    // get barycentric coordinates
+    double A[2], B[2], C[2], P[2];
+    tri.project_2d(normal, ray.intersection_point, A, B, C, P);
+    double alpha, beta, gamma;
+    tri.barycentric(A, B, C, P, alpha, beta, gamma);
+
+    // diffuse interpolation
+    kd[0] = alpha * tri.v[0].color_diffuse[0] + beta
+      * tri.v[1].color_diffuse[0] + gamma * tri.v[2].color_diffuse[0];
+    kd[1] = alpha * tri.v[0].color_diffuse[1] + beta
+      * tri.v[1].color_diffuse[1] + gamma * tri.v[2].color_diffuse[1];
+    kd[2] = alpha * tri.v[0].color_diffuse[2] + beta
+      * tri.v[1].color_diffuse[2] + gamma * tri.v[2].color_diffuse[2];
+
+    // specular interpolation
+    ks[0] = alpha * tri.v[0].color_specular[0] + beta
+      * tri.v[1].color_specular[0] + gamma * tri.v[2].color_specular[0];
+    ks[1] = alpha * tri.v[0].color_specular[1] + beta
+      * tri.v[1].color_specular[1] + gamma * tri.v[2].color_specular[1];
+    ks[2] = alpha * tri.v[0].color_specular[2] + beta
+      * tri.v[1].color_specular[2] + gamma * tri.v[2].color_specular[2];
+
+    // shininess interpolation
+    shininess = alpha * tri.v[0].shininess + beta
+      * tri.v[1].shininess + gamma * tri.v[2].shininess;
   }
 
   // final color (populated by phong shading)
