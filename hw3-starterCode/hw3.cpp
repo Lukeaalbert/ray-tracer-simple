@@ -48,12 +48,14 @@ int mode = MODE_DISPLAY;
 // However, for your own purposes, after you have solved the homework, you can increase those values to obtain higher-resolution images.
 #define WIDTH 640
 #define HEIGHT 480
-
+#define SUPERSAMPLING_FACTOR 4
+#define WIDTH_SUPERSAMPLING (WIDTH * SUPERSAMPLING_FACTOR)
+#define HEIGHT_SUPERSAMPLING (HEIGHT * SUPERSAMPLING_FACTOR)
 // The field of view of the camera, in degrees.
 #define fov 60.0
 
-// Buffer to store the image.
-unsigned char buffer[HEIGHT][WIDTH][3];
+// buffer to store the image.
+unsigned char buffer[WIDTH_SUPERSAMPLING][HEIGHT_SUPERSAMPLING][3];
 
 struct Vertex
 {
@@ -276,7 +278,7 @@ int num_lights = 0;
 
 // Populated in compute_eye_to_image_plane_rays().
 // Every entry has an x, y, z coordinate.
-double unit_rays[WIDTH][HEIGHT][3];
+double unit_rays[WIDTH_SUPERSAMPLING][HEIGHT_SUPERSAMPLING][3];
 
 enum ObjectType {TRIANGLE, SPHERE, LIGHT, UNDEFINED};
 
@@ -305,7 +307,7 @@ struct TracedRay {
   }
 };
 
-TracedRay traced_rays[WIDTH][HEIGHT];
+TracedRay traced_rays[WIDTH_SUPERSAMPLING][HEIGHT_SUPERSAMPLING];
 
 void plot_pixel_display(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 void plot_pixel_jpeg(int x,int y,unsigned char r,unsigned char g,unsigned char b);
@@ -317,20 +319,20 @@ void compute_unit_rays() {
   // before calculating the actual rays from the origin to the
   // image plane (obviously).
   double fov_radians = fov * M_PI / 180.0f;
-  double aspect_ratio = ((double)WIDTH/(double)HEIGHT);
+  double aspect_ratio = ((double)WIDTH_SUPERSAMPLING/(double)HEIGHT_SUPERSAMPLING);
   double image_plane_height = 2.0f * tan(fov_radians/2);
   double image_plane_width = 2.0f * (aspect_ratio * tan(fov_radians/2));
   // Find rays from origin to the image plane.
-  for (double x=0.0f; x<WIDTH; x += 1.0f)
+  for (double x=0.0f; x<WIDTH_SUPERSAMPLING; x += 1.0f)
   {
     // -1 to 1
-    double u = ( (x + 0.5) / WIDTH ) * 2 - 1;
+    double u = ( (x + 0.5) / WIDTH_SUPERSAMPLING ) * 2 - 1;
     // x coordinate for point on image plane 
     double px = u * (image_plane_width/2);
-    for (double y=0.0f; y<HEIGHT; y += 1.0f)
+    for (double y=0.0f; y<HEIGHT_SUPERSAMPLING; y += 1.0f)
     {
       // -1 to 1
-      double v = ((y + 0.5) / HEIGHT) * 2 - 1;
+      double v = ((y + 0.5) / HEIGHT_SUPERSAMPLING) * 2 - 1;
       // y coordinate for point on image plane 
       double py = v * (image_plane_height/2);
       // y coordinate for point on image plane (constant -1)
@@ -351,8 +353,8 @@ void compute_unit_rays() {
 void cast_primary_rays() {
   double origin[3] = {0.0, 0.0, 0.0};
   // iterate through all rays
-  for (unsigned int i = 0; i < WIDTH; ++i) {
-    for (int j = 0; j < HEIGHT; ++j) {
+  for (unsigned int i = 0; i < WIDTH_SUPERSAMPLING; ++i) {
+    for (int j = 0; j < HEIGHT_SUPERSAMPLING; ++j) {
       // get current ray
       double curr_ray[3];
       deep_copy(curr_ray, unit_rays[i][j]);
@@ -414,8 +416,8 @@ void cast_primary_rays() {
 
 // populates 'is_illuminated_by_light' fields in 'traced_rays'.
 void cast_shadow_rays() {
-  for (unsigned int x = 0; x < WIDTH; ++x) {
-    for (unsigned int y = 0; y < HEIGHT; ++y) {
+  for (unsigned int x = 0; x < WIDTH_SUPERSAMPLING; ++x) {
+    for (unsigned int y = 0; y < HEIGHT_SUPERSAMPLING; ++y) {
       // skip if no intersection
       if (!traced_rays[x][y].intersects_object) {
         continue;
@@ -612,9 +614,22 @@ void draw_scene()
     glBegin(GL_POINTS);
     for(unsigned int y = 0; y < HEIGHT; y++)
     {
-      unsigned char r, g, b;
-      compute_phong_color(traced_rays[x][y], r, g, b);
-      plot_pixel(x, y, r, g, b);
+      // supersampling anti-aliasing
+      unsigned int r = 0, g = 0, b = 0;
+      for (int i = 0; i < SUPERSAMPLING_FACTOR; ++i) {
+        for (int j = 0; j < SUPERSAMPLING_FACTOR; ++j) {
+          unsigned char r_curr, g_curr, b_curr;
+          compute_phong_color(traced_rays[x*SUPERSAMPLING_FACTOR+i][y*SUPERSAMPLING_FACTOR+j],
+            r_curr, g_curr, b_curr);
+          r += r_curr;
+          g += g_curr;
+          b += b_curr;
+        }
+      }
+      unsigned char avg_r = static_cast<unsigned char>(r / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
+      unsigned char avg_g = static_cast<unsigned char>(g / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
+      unsigned char avg_b = static_cast<unsigned char>(b / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
+      plot_pixel(x, y, avg_r, avg_g, avg_b);
     }
     glEnd();
     glFlush();
