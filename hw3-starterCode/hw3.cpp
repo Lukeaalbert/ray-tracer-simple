@@ -54,8 +54,8 @@ int mode = MODE_DISPLAY;
 // The field of view of the camera, in degrees.
 #define fov 60.0
 
-// buffer to store the image.
-unsigned char buffer[WIDTH_SUPERSAMPLING][HEIGHT_SUPERSAMPLING][3];
+// buffer to store the image (post-antialiasing)
+unsigned char buffer[HEIGHT][WIDTH][3];
 
 struct Vertex
 {
@@ -477,9 +477,9 @@ void cast_shadow_rays() {
 void compute_phong_color(TracedRay& ray, unsigned char& r, unsigned char& g, unsigned char& b) {
   // return background color if no intersection
   if (!ray.intersects_object) {
-    r = 0;
-    g = 0;
-    b = 0;
+    r = 124;
+    g = 124;
+    b = 124;
     return;
   }
   
@@ -606,14 +606,15 @@ void compute_phong_color(TracedRay& ray, unsigned char& r, unsigned char& g, uns
   b = (unsigned char)(final_color[2] * 255);
 }
 
-// takes all (supersampled) traced rays, does lighting calculations
-// on them, averages them based on the supersample factor, 
-// and fills in buffer with the color data of each pixel.
-void gen_buffer_from_traced_rays() {
+void draw_scene()
+{
   for(unsigned int x = 0; x < WIDTH; x++)
   {
+    glPointSize(2.0);  
+    glBegin(GL_POINTS);
     for(unsigned int y = 0; y < HEIGHT; y++)
     {
+      // take average from supersampled image to WIDTH x HEIGHT sized image
       unsigned int r = 0, g = 0, b = 0;
       for (int i = 0; i < SUPERSAMPLING_FACTOR; ++i) {
         for (int j = 0; j < SUPERSAMPLING_FACTOR; ++j) {
@@ -628,24 +629,7 @@ void gen_buffer_from_traced_rays() {
       unsigned char avg_r = static_cast<unsigned char>(r / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
       unsigned char avg_g = static_cast<unsigned char>(g / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
       unsigned char avg_b = static_cast<unsigned char>(b / (SUPERSAMPLING_FACTOR*SUPERSAMPLING_FACTOR));
-      buffer[x][y][0] = avg_r;
-      buffer[x][y][1] = avg_g;
-      buffer[x][y][2] = avg_b;
-    }
-  }
-}
-
-void draw_scene()
-{
-  // supersampled image to WIDTH x HEIGHT sized image
-  gen_buffer_from_traced_rays();
-  for(unsigned int x = 0; x < WIDTH; x++)
-  {
-    glPointSize(2.0);  
-    glBegin(GL_POINTS);
-    for(unsigned int y = 0; y < HEIGHT; y++)
-    {
-      plot_pixel(x, y, buffer[x][y][0], buffer[x][y][1], buffer[x][y][2]);
+      plot_pixel(x, y, avg_r, avg_g, avg_b);
     }
     glEnd();
     glFlush();
