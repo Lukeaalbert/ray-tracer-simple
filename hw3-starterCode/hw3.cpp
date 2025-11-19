@@ -388,10 +388,6 @@ void cast_primary_rays() {
             }
           }
         }
-        // light intersection
-        if (idx < num_lights) {
-          // TODO
-        }
         // increment idx (always!)
         idx++;
       }
@@ -477,9 +473,9 @@ void cast_shadow_rays() {
 void compute_phong_color(TracedRay& ray, unsigned char& r, unsigned char& g, unsigned char& b) {
   // return background color if no intersection
   if (!ray.intersects_object) {
-    r = 124;
-    g = 124;
-    b = 124;
+    r = 64;
+    g = 64;
+    b = 64;
     return;
   }
   
