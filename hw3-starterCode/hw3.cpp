@@ -307,8 +307,6 @@ struct TracedRay {
   }
 };
 
-TracedRay traced_rays[WIDTH_SUPERSAMPLING][HEIGHT_SUPERSAMPLING];
-
 void plot_pixel_display(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 void plot_pixel_jpeg(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 void plot_pixel(int x,int y,unsigned char r,unsigned char g,unsigned char b);
@@ -348,124 +346,111 @@ void compute_unit_rays() {
   }
 }
 
-// casts all unit rays and finds the cloest object they intersects.
-// populates 'traced_rays' global var.
-void cast_primary_rays() {
-  double origin[3] = {0.0, 0.0, 0.0};
-  // iterate through all rays
-  for (unsigned int i = 0; i < WIDTH_SUPERSAMPLING; ++i) {
-    for (int j = 0; j < HEIGHT_SUPERSAMPLING; ++j) {
-      // get current ray
-      double curr_ray[3];
-      deep_copy(curr_ray, unit_rays[i][j]);
-      // variables used for tracking the closest intersection
-      ObjectType closest_object_type = UNDEFINED; 
-      double closest_t = DBL_MAX;
-      int closest_obj_idx = -1;
-      int idx = 0; 
-      // looping condition (while there are still shapes to explore)
-      while (idx < num_spheres || idx < num_triangles || idx < num_lights) {
-        // sphere intersection
-        if (idx < num_spheres) {
-          double t;
-          if (spheres[idx].intersect(origin, curr_ray, t)) {
-            // intersection is valid and less is new closest intersection
-            if (t < closest_t) {
-              closest_t = t;
-              closest_object_type = SPHERE;
-              closest_obj_idx = idx;
-            }
-          }
+// casts unit rays and finds the closest object it intersects.
+// returns a 'traced_ray'.
+TracedRay cast_primary_ray(const double unit_ray[3], const double origin[3]) {
+  // variables used for tracking the closest intersection
+  ObjectType closest_object_type = UNDEFINED; 
+  double closest_t = DBL_MAX;
+  int closest_obj_idx = -1;
+  int idx = 0; 
+  // looping condition (while there are still shapes to explore)
+  while (idx < num_spheres || idx < num_triangles || idx < num_lights) {
+    // sphere intersection
+    if (idx < num_spheres) {
+      double t;
+      if (spheres[idx].intersect(origin, unit_ray, t)) {
+        // intersection is valid and less is new closest intersection
+        if (t < closest_t) {
+          closest_t = t;
+          closest_object_type = SPHERE;
+          closest_obj_idx = idx;
         }
-        // triangle intersection
-        if (idx < num_triangles) {
-          double t;
-          if (triangles[idx].intersect(origin, curr_ray, t)) {
-            if (t < closest_t) {
-              closest_t = t;
-              closest_object_type = TRIANGLE;
-              closest_obj_idx = idx;
-            }
-          }
-        }
-        // increment idx (always!)
-        idx++;
       }
-      TracedRay traced_ray;
-      // valid ray object intersection
-      if (closest_t != DBL_MAX) {
-        traced_ray.intersects_object = true;
-        traced_ray.object_type = closest_object_type;
-        traced_ray.object_idx = closest_obj_idx;
-        traced_ray.t = closest_t;
-        traced_ray.intersection_point[0] = closest_t * curr_ray[0];
-        traced_ray.intersection_point[1] = closest_t * curr_ray[1];
-        traced_ray.intersection_point[2] = closest_t * curr_ray[2];
-        traced_ray.unit_ray[0] = curr_ray[0];
-        traced_ray.unit_ray[1] = curr_ray[1];
-        traced_ray.unit_ray[2] = curr_ray[2];
-      }
-      traced_rays[i][j] = traced_ray;
     }
+    // triangle intersection
+    if (idx < num_triangles) {
+      double t;
+      if (triangles[idx].intersect(origin, unit_ray, t)) {
+        if (t < closest_t) {
+          closest_t = t;
+          closest_object_type = TRIANGLE;
+          closest_obj_idx = idx;
+        }
+      }
+    }
+    // increment idx (always!)
+    idx++;
   }
+  TracedRay traced_ray;
+  // valid ray object intersection
+  if (closest_t != DBL_MAX) {
+    traced_ray.intersects_object = true;
+    traced_ray.object_type = closest_object_type;
+    traced_ray.object_idx = closest_obj_idx;
+    traced_ray.t = closest_t;
+    traced_ray.intersection_point[0] = closest_t * unit_ray[0];
+    traced_ray.intersection_point[1] = closest_t * unit_ray[1];
+    traced_ray.intersection_point[2] = closest_t * unit_ray[2];
+    traced_ray.unit_ray[0] = unit_ray[0];
+    traced_ray.unit_ray[1] = unit_ray[1];
+    traced_ray.unit_ray[2] = unit_ray[2];
+  }
+  return traced_ray;
 }
 
-// populates 'is_illuminated_by_light' fields in 'traced_rays'.
-void cast_shadow_rays() {
-  for (unsigned int x = 0; x < WIDTH_SUPERSAMPLING; ++x) {
-    for (unsigned int y = 0; y < HEIGHT_SUPERSAMPLING; ++y) {
-      // skip if no intersection
-      if (!traced_rays[x][y].intersects_object) {
-        continue;
+// populates 'is_illuminated_by_light' fields in 'traced_ray'.
+void cast_shadow_ray(TracedRay& traced_ray) {
+  // skip if no intersection
+  if (!traced_ray.intersects_object) {
+    return;
+  }
+  // resize illumination vector
+  traced_ray.is_illuminated_by_light.resize(num_lights, false);
+  // iterate through lights
+  for (int l = 0; l < num_lights; ++l) {
+    Light light = lights[l];
+    
+    // direction from intersection to light
+    double intersection_to_curr_light[3];
+    subtract(light.position, traced_ray.intersection_point, intersection_to_curr_light);
+    double distance_to_light = magnitude(intersection_to_curr_light);
+    normalize(intersection_to_curr_light);
+    
+    // to check if path to light is blocked
+    bool intersection_found = false;
+    
+    // spheres checks
+    for (int idx = 0; idx < num_spheres; idx++) {
+      if (idx == traced_ray.object_idx
+        && traced_ray.object_type == SPHERE) continue;
+      double t;
+      if (spheres[idx].intersect(traced_ray.intersection_point, intersection_to_curr_light, t)) {
+        if (t > 0 && t < distance_to_light) {
+          intersection_found = true;
+          break;
+        }
       }
-      // resize illumination vector
-      traced_rays[x][y].is_illuminated_by_light.resize(num_lights, false);
-      // iterate through lights
-      for (int l = 0; l < num_lights; ++l) {
-        Light light = lights[l];
-        
-        // direction from intersection to light
-        double intersection_to_curr_light[3];
-        subtract(light.position, traced_rays[x][y].intersection_point, intersection_to_curr_light);
-        double distance_to_light = magnitude(intersection_to_curr_light);
-        normalize(intersection_to_curr_light);
-        
-        // to check if path to light is blocked
-        bool intersection_found = false;
-        
-        // spheres checks
-        for (int idx = 0; idx < num_spheres; idx++) {
-          if (idx == traced_rays[x][y].object_idx
-            && traced_rays[x][y].object_type == SPHERE) continue;
+    }
+    
+    // triangles checks
+    if (!intersection_found) {
+      for (int idx = 0; idx < num_triangles; idx++) {
+        if (idx == traced_ray.object_idx
+          && traced_ray.object_type == TRIANGLE) continue;
           double t;
-          if (spheres[idx].intersect(traced_rays[x][y].intersection_point, intersection_to_curr_light, t)) {
+          if (triangles[idx].intersect(traced_ray.intersection_point, intersection_to_curr_light, t)) {
             if (t > 0 && t < distance_to_light) {
-              intersection_found = true;
-              break;
-            }
+            intersection_found = true;
+            break;
           }
-        }
-        
-        // triangles checks
-        if (!intersection_found) {
-          for (int idx = 0; idx < num_triangles; idx++) {
-            if (idx == traced_rays[x][y].object_idx
-              && traced_rays[x][y].object_type == TRIANGLE) continue;
-              double t;
-              if (triangles[idx].intersect(traced_rays[x][y].intersection_point, intersection_to_curr_light, t)) {
-                if (t > 0 && t < distance_to_light) {
-                intersection_found = true;
-                break;
-              }
-            }
-          }
-        }
-        
-        // if no blocking object found, point is illuminated
-        if (!intersection_found) {
-          traced_rays[x][y].is_illuminated_by_light[l] = true;
         }
       }
+    }
+    
+    // if no blocking object found, point is illuminated
+    if (!intersection_found) {
+      traced_ray.is_illuminated_by_light[l] = true;
     }
   }
 }
@@ -604,6 +589,7 @@ void compute_phong_color(TracedRay& ray, unsigned char& r, unsigned char& g, uns
 
 void draw_scene()
 {
+  compute_unit_rays();
   for(unsigned int x = 0; x < WIDTH; x++)
   {
     glPointSize(2.0);  
@@ -614,9 +600,14 @@ void draw_scene()
       unsigned int r = 0, g = 0, b = 0;
       for (int i = 0; i < SUPERSAMPLING_FACTOR; ++i) {
         for (int j = 0; j < SUPERSAMPLING_FACTOR; ++j) {
+          // cast ray
+          double origin[3] = {0.0, 0.0, 0.0};
+          TracedRay traced_ray = cast_primary_ray(unit_rays[x*SUPERSAMPLING_FACTOR+i][y*SUPERSAMPLING_FACTOR+j], origin);
+          // cast shadow ray
+          cast_shadow_ray(traced_ray);
+          // compute final color
           unsigned char r_curr, g_curr, b_curr;
-          compute_phong_color(traced_rays[x*SUPERSAMPLING_FACTOR+i][y*SUPERSAMPLING_FACTOR+j],
-            r_curr, g_curr, b_curr);
+          compute_phong_color(traced_ray, r_curr, g_curr, b_curr);
           r += r_curr;
           g += g_curr;
           b += b_curr;
@@ -804,10 +795,6 @@ void idle()
   static int once=0;
   if(!once)
   {
-    // Construct the rays from eye to image plane
-    compute_unit_rays();
-    cast_primary_rays();
-    cast_shadow_rays();
     draw_scene();
     if(mode == MODE_JPEG)
       save_jpg();
